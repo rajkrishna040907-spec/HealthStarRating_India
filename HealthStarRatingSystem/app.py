@@ -12,6 +12,8 @@ import easyocr
 # ─────────────────────────────────────────────────────────────
 # DATA & MODEL LOADERS
 # ─────────────────────────────────────────────────────────────
+# Determine base path relative to app.py location
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @st.cache_resource
 def load_ocr_reader():
@@ -21,14 +23,14 @@ reader = load_ocr_reader()
 
 @st.cache_data
 def load_dataset():
-    path = r"D:\HealthStarRatingSystem\Dataset\packaged_foods_india.csv"
+    path = os.path.join(_BASE_DIR, "Dataset", "packaged_foods_india.csv")
     if os.path.exists(path):
         return pd.read_csv(path)
     return pd.DataFrame()
 
 @st.cache_data
 def load_cooked_dataset():
-    path = r"D:\HealthStarRatingSystem\Dataset\Indian_Food_Nutrition_Processed.csv"
+    path = os.path.join(_BASE_DIR, "Dataset", "Indian_Food_Nutrition_Processed.csv")
     if os.path.exists(path):
         return pd.read_csv(path)
     return pd.DataFrame()
@@ -39,7 +41,7 @@ def load_ml_models():
         'Packaged Foods': None, 'Packaged Label Encoder': None,
         'Cooked Dishes': None,  'Cooked Label Encoder': None
     }
-    pkg_path = r"D:\HealthStarRatingSystem\models\packaged_model.pkl"
+    pkg_path = os.path.join(_BASE_DIR, "models", "packaged_model.pkl")
     if os.path.exists(pkg_path):
         try:
             pkg_data = joblib.load(pkg_path)
@@ -48,7 +50,7 @@ def load_ml_models():
         except Exception as e:
             st.error(f"Error loading packaged model: {e}")
 
-    ckd_path = r"D:\HealthStarRatingSystem\models\cooked_model.pkl"
+    ckd_path = os.path.join(_BASE_DIR, "models", "cooked_model.pkl")
     if os.path.exists(ckd_path):
         try:
             ckd_data = joblib.load(ckd_path)
