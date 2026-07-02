@@ -429,25 +429,29 @@ def display_fssai_rating(energy, fat, sugar, sodium, protein, fiber,
                           product_category="Solid Food",
                           product_name="", show_hfss=True):
     """
-    Full rating pipeline: HFSS warning → score → star display.
+    Full rating pipeline: score -> HFSS warning (gated) -> star display.
     Returns (final_score, star_rating) for downstream use.
+    The HFSS banner is suppressed when predicted_star == 5.0 to prevent
+    false alarms on naturally low-calorie healthy items (e.g. vegetable
+    stock) where a tiny energy denominator artificially inflates the ratio.
     """
-    if show_hfss and energy > 0 and (sodium / energy) > 1.0:
-        st.markdown(
-            '<div style="background-color:#F8C471;padding:15px;border-radius:10px;'
-            'color:#935116;margin-bottom:20px;text-align:center;font-weight:bold;">'
-            '⚠️ HFSS Safety Warning: High Fat, Sugar & Salt detected! '
-            '(Sodium-to-Energy ratio > 1.0)</div>',
-            unsafe_allow_html=True
-        )
-
+    # Score first — so the HFSS gate can check the actual star value
     final_score, predicted_star = calculate_fssai_rating(
         energy, fat, sugar, sodium, protein, fiber, product_category
     )
 
-    label = "🥤 FSSAI Liquid Beverage Rating" \
+    if show_hfss and energy > 0 and (sodium / energy) > 1.0 and predicted_star < 5.0:
+        st.markdown(
+            '<div style="background-color:#F8C471;padding:15px;border-radius:10px;'
+            'color:#935116;margin-bottom:20px;text-align:center;font-weight:bold;">'
+            '\u26a0\ufe0f HFSS Safety Warning: High Fat, Sugar & Salt detected! '
+            '(Sodium-to-Energy ratio > 1.0)</div>',
+            unsafe_allow_html=True
+        )
+
+    label = "\U0001f964 FSSAI Liquid Beverage Rating" \
         if product_category == "Liquid Beverage" \
-        else "📐 Strict FSSAI Rule-Based Rating"
+        else "\U0001f4d0 Strict FSSAI Rule-Based Rating"
 
     render_star_display(predicted_star, label)
     return final_score, predicted_star
@@ -463,11 +467,15 @@ def display_ml_prediction(energy, fat, sugar, sodium, protein, fiber,
     ML-backed prediction for OCR/upload path.
     Liquid beverages always bypass ML and use FSSAI rules.
     """
-    if energy > 0 and (sodium / energy) > 1.0:
+    # Pre-compute the star so we can suppress HFSS banner on perfect scores
+    _pre_score, _pre_star = calculate_fssai_rating(
+        energy, fat, sugar, sodium, protein, fiber, product_category
+    )
+    if energy > 0 and (sodium / energy) > 1.0 and _pre_star < 5.0:
         st.markdown(
             '<div style="background-color:#F8C471;padding:15px;border-radius:10px;'
             'color:#935116;margin-bottom:20px;text-align:center;font-weight:bold;">'
-            '⚠️ HFSS Safety Warning: High Fat, Sugar & Salt detected! '
+            '\u26a0\ufe0f HFSS Safety Warning: High Fat, Sugar & Salt detected! '
             '(Sodium-to-Energy ratio > 1.0)</div>',
             unsafe_allow_html=True
         )
@@ -1483,6 +1491,15 @@ elif st.session_state.active_mode == "cooked":
                 product_category=cooked_product_form,
                 product_name=selected_dish
             )
+
+            # Papad serving-size context note
+            if "papad" in selected_dish.lower():
+                st.info(
+                    "\U0001f4a1 **Serving Size Note:** Papad is evaluated per 100g raw weight "
+                    "according to standard FSSAI protocols. While it scales with high sodium "
+                    "density, a typical single-piece serving is only ~3g to 5g in practice."
+                )
+
             render_pdf_download_button(
                 selected_dish, cooked_product_form, metrics,
                 final_score, star, hfss_warning=hfss
