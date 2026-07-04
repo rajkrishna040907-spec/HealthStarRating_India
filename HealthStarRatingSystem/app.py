@@ -239,6 +239,10 @@ def parse_nutritional_info(text: str) -> dict:
             r'(?:energy|calories|kcal|kj|eheroy|eneroy|enercy|enery)'
             r'[^\d]{0,25}?(\d+(?:[.,]\d+)?)'
         ),
+        'Fat': (
+            r'(?:total\s*fat|fat)'
+            r'[^\\d]{0,15}(\\d+(?:[.,]\\d+)?)'
+        ),
         'Sat_Fat': (
             r'(?:saturated|sat\.?\s*fat|sat\s+fat)'
             r'[^\d]{0,20}?(\d+(?:[.,]\d+)?)'
@@ -339,7 +343,7 @@ def get_liquid_stars(score):
     elif score < 20:  return 1.0
     else:             return 0.5   # score >= 20 → mandatory 0.5 floor
 
-def calculate_fssai_solid_score(energy, fat, sugar, sodium, protein, fiber):
+def calculate_fssai_solid_score(energy, sat_fat, sugar, sodium, protein, fiber):
     """
     Full FSSAI solid-food point calculation with the official 11-point
     gatekeeper rule for positive nutrient offsets.
@@ -349,7 +353,7 @@ def calculate_fssai_solid_score(energy, fat, sugar, sodium, protein, fiber):
     # --- Baseline risk points ---
     energy_pts  = min(10, max(0, int((energy - 80) // 30))) if energy > 80 else 0
     sugar_pts   = min(10, max(0, int((sugar  - 4.5) // 4.5))) if sugar  > 4.5 else 0
-    sat_fat_pts = min(10, max(0, int((fat    - 1.0) // 1.0))) if fat    > 1.0 else 0
+    sat_fat_pts = min(10, max(0, int((sat_fat - 1.0) // 1.0))) if sat_fat > 1.0 else 0
     sodium_pts  = min(10, max(0, int((sodium - 90)  // 90)))  if sodium > 90  else 0
     total_baseline = energy_pts + sugar_pts + sat_fat_pts + sodium_pts
 
@@ -381,7 +385,7 @@ def calculate_fssai_solid_score(energy, fat, sugar, sodium, protein, fiber):
 
     return final_score, star
 
-def calculate_fssai_rating(energy, fat, sugar, sodium, protein, fiber,
+def calculate_fssai_rating(energy, sat_fat, sugar, sodium, protein, fiber,
                             product_category="Solid Food"):
     """
     Top-level dispatcher: routes to the correct FSSAI calculation
@@ -394,7 +398,7 @@ def calculate_fssai_rating(energy, fat, sugar, sodium, protein, fiber,
         total      = energy_pts + sugar_pts
         return total, get_liquid_stars(total)
     else:
-        return calculate_fssai_solid_score(energy, fat, sugar, sodium, protein, fiber)
+        return calculate_fssai_solid_score(energy, sat_fat, sugar, sodium, protein, fiber)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -425,7 +429,7 @@ def render_star_display(predicted_star, label="📐 Strict FSSAI Rule-Based Rati
     else:
         st.error("🚨 Very Poor. High health risk — strongly avoid.")
 
-def display_fssai_rating(energy, fat, sugar, sodium, protein, fiber,
+def display_fssai_rating(energy, sat_fat, sugar, sodium, protein, fiber,
                           product_category="Solid Food",
                           product_name="", show_hfss=True):
     """
@@ -437,7 +441,7 @@ def display_fssai_rating(energy, fat, sugar, sodium, protein, fiber,
     """
     # Score first — so the HFSS gate can check the actual star value
     final_score, predicted_star = calculate_fssai_rating(
-        energy, fat, sugar, sodium, protein, fiber, product_category
+        energy, sat_fat, sugar, sodium, protein, fiber, product_category
     )
 
     if show_hfss and energy > 0 and (sodium / energy) > 1.0 and predicted_star < 5.0:
@@ -461,7 +465,7 @@ def display_fssai_rating(energy, fat, sugar, sodium, protein, fiber,
 # MODULE 2 — ML PREDICTION (used by Vision AI / Upload NIP path)
 # ─────────────────────────────────────────────────────────────
 
-def display_ml_prediction(energy, fat, sugar, sodium, protein, fiber,
+def display_ml_prediction(energy, sat_fat, sugar, sodium, protein, fiber,
                            model_key, product_category):
     """
     ML-backed prediction for OCR/upload path.
@@ -469,7 +473,7 @@ def display_ml_prediction(energy, fat, sugar, sodium, protein, fiber,
     """
     # Pre-compute the star so we can suppress HFSS banner on perfect scores
     _pre_score, _pre_star = calculate_fssai_rating(
-        energy, fat, sugar, sodium, protein, fiber, product_category
+        energy, sat_fat, sugar, sodium, protein, fiber, product_category
     )
     if energy > 0 and (sodium / energy) > 1.0 and _pre_star < 5.0:
         st.markdown(
@@ -491,7 +495,7 @@ def display_ml_prediction(energy, fat, sugar, sodium, protein, fiber,
         le  = models.get(f"{model_key.split(' ')[0]} Label Encoder")
         if mdl is not None and le is not None:
             features = pd.DataFrame(
-                [[energy, fat, sugar, sodium, protein, fiber]],
+                [[energy, sat_fat, sugar, sodium, protein, fiber]],
                 columns=['Energy', 'Sat_Fat', 'Sugar', 'Sodium', 'Protein', 'Fiber']
             )
             pred_idx       = mdl.predict(features)[0]
@@ -509,7 +513,8 @@ def display_ml_prediction(energy, fat, sugar, sodium, protein, fiber,
 # ─────────────────────────────────────────────────────────────
 
 PACKAGED_ENERGY_COL  = 'Calories_kcal'
-PACKAGED_FAT_COL     = 'Saturated_Fat_g'
+PACKAGED_FAT_COL     = 'Total_Fat_g'
+PACKAGED_SAT_FAT_COL = 'Saturated_Fat_g'
 PACKAGED_SUGAR_COL   = 'Sugar_g'
 PACKAGED_SODIUM_COL  = 'Sodium_mg'
 PACKAGED_PROTEIN_COL = 'Proteins_g'
@@ -517,7 +522,8 @@ PACKAGED_FIBER_COL   = 'Dietary_Fiber_g'
 PACKAGED_NAME_COL    = 'Item name'
 
 COOKED_ENERGY_COL    = 'Calories (kcal)'
-COOKED_FAT_COL       = 'Fats (g)'
+COOKED_FAT_COL       = 'Total_Fat (g)'
+COOKED_SAT_FAT_COL   = 'Saturated_Fat (g)'
 COOKED_SUGAR_COL     = 'Free Sugar (g)'
 COOKED_SODIUM_COL    = 'Sodium (mg)'
 COOKED_PROTEIN_COL   = 'Protein (g)'
@@ -535,7 +541,7 @@ def get_packaged_star(row):
     """Compute FSSAI solid-food star for a packaged row."""
     _, star = calculate_fssai_solid_score(
         _safe_float(row.get(PACKAGED_ENERGY_COL, 0)),
-        _safe_float(row.get(PACKAGED_FAT_COL, 0)),
+        _safe_float(row.get(PACKAGED_SAT_FAT_COL, 0)),
         _safe_float(row.get(PACKAGED_SUGAR_COL, 0)),
         _safe_float(row.get(PACKAGED_SODIUM_COL, 0)),
         _safe_float(row.get(PACKAGED_PROTEIN_COL, 0)),
@@ -547,7 +553,7 @@ def get_cooked_star(row):
     """Compute FSSAI solid-food star for a cooked row."""
     _, star = calculate_fssai_solid_score(
         _safe_float(row.get(COOKED_ENERGY_COL, 0)),
-        _safe_float(row.get(COOKED_FAT_COL, 0)),
+        _safe_float(row.get(COOKED_SAT_FAT_COL, 0)),
         _safe_float(row.get(COOKED_SUGAR_COL, 0)),
         _safe_float(row.get(COOKED_SODIUM_COL, 0)),
         _safe_float(row.get(COOKED_PROTEIN_COL, 0)),
@@ -977,7 +983,7 @@ div[data-testid="stNumberInput"] {
 NUTRIENT_LABELS = ["⚡ Energy", "🧈 Saturated Fat", "🍬 Total Sugars",
                    "🧂 Sodium", "🥩 Protein", "🌾 Dietary Fiber"]
 
-def build_metrics_dict(energy, fat, sugar, sodium, protein, fiber, form):
+def build_metrics_dict(energy, fat, sat_fat, sugar, sodium, protein, fiber, form):
     unit_e = "kcal" if form == "Solid Food" else "kcal/100ml"
     return {
         "⚡ Energy":         f"{energy} {unit_e}",
@@ -1129,13 +1135,14 @@ elif st.session_state.active_mode == "packaged":
             row = df[df[PACKAGED_NAME_COL] == selected_product].iloc[0]
             energy_val  = _safe_float(row.get(PACKAGED_ENERGY_COL,  0))
             fat_val     = _safe_float(row.get(PACKAGED_FAT_COL,     0))
+            sat_fat_val = _safe_float(row.get(PACKAGED_SAT_FAT_COL, 0))
             sugar_val   = _safe_float(row.get(PACKAGED_SUGAR_COL,   0))
             sodium_val  = _safe_float(row.get(PACKAGED_SODIUM_COL,  0))
             protein_val = _safe_float(row.get(PACKAGED_PROTEIN_COL, 0))
             fiber_val   = _safe_float(row.get(PACKAGED_FIBER_COL,   0))
 
             st.markdown(f"**{selected_product}** Nutritional Breakdown:")
-            metrics = build_metrics_dict(energy_val, fat_val, sugar_val,
+            metrics = build_metrics_dict(energy_val, fat_val, sat_fat_val, sugar_val,
                                          sodium_val, protein_val, fiber_val,
                                          search_product_form)
             table_data = {
@@ -1146,7 +1153,7 @@ elif st.session_state.active_mode == "packaged":
 
             hfss = energy_val > 0 and (sodium_val / energy_val) > 1.0
             final_score, star = display_fssai_rating(
-                energy_val, fat_val, sugar_val, sodium_val, protein_val, fiber_val,
+                energy_val, sat_fat_val, sugar_val, sodium_val, protein_val, fiber_val,
                 product_category=search_product_form,
                 product_name=selected_product
             )
@@ -1359,7 +1366,7 @@ elif st.session_state.active_mode == "packaged":
                                      key="ocr_calc_btn",
                                      use_container_width=False):
                             display_ml_prediction(
-                                energy_val, fat_val, sugar_val, sodium_val,
+                                energy_val, sat_fat_val, sugar_val, sodium_val,
                                 protein_val, fiber_val,
                                 model_key=model_key,
                                 product_category=product_category
@@ -1396,7 +1403,8 @@ elif st.session_state.active_mode == "packaged":
         col1, col2 = st.columns(2)
         with col1:
             energy_man  = st.number_input("Energy / Calories (kcal)", min_value=0.0, max_value=1000.0, value=0.0, step=1.0,  key="pkg_en")
-            fat_man     = st.number_input("Saturated Fat (g)",         min_value=0.0, max_value=100.0,  value=0.0, step=0.1,  key="pkg_fat")
+            fat_man     = st.number_input("Total Fat (g)",         min_value=0.0, max_value=100.0, value=0.0, step=0.1, key="pkg_tot_fat")
+            sat_fat_man = st.number_input("Saturated Fat (g)",     min_value=0.0, max_value=100.0, value=0.0, step=0.1, key="pkg_sat_fat")
             sugar_man   = st.number_input("Sugar (g)",                 min_value=0.0, max_value=100.0,  value=0.0, step=0.1,  key="pkg_sug")
         with col2:
             sodium_man  = st.number_input("Sodium (mg)",               min_value=0.0, max_value=5000.0, value=0.0, step=1.0,  key="pkg_sod")
@@ -1404,7 +1412,7 @@ elif st.session_state.active_mode == "packaged":
             fiber_man   = st.number_input("Dietary Fiber (g)",         min_value=0.0, max_value=100.0,  value=0.0, step=0.1,  key="pkg_fib")
 
         # ── Minimum completeness check ──
-        filled_count = sum(1 for v in [energy_man, fat_man, sugar_man, sodium_man, protein_man, fiber_man] if v > 0.0)
+        filled_count = sum(1 for v in [energy_man, fat_man, sat_fat_man, sugar_man, sodium_man, protein_man, fiber_man] if v > 0.0)
         if energy_man == 0.0:
             st.error(
                 "🚫 **Energy (kcal) is required.** "
@@ -1426,10 +1434,10 @@ elif st.session_state.active_mode == "packaged":
             else:
                 hfss = sodium_man > 0 and (sodium_man / energy_man) > 1.0
                 final_score, star = display_fssai_rating(
-                    energy_man, fat_man, sugar_man, sodium_man, protein_man, fiber_man,
+                    energy_man, sat_fat_man, sugar_man, sodium_man, protein_man, fiber_man,
                     product_category=manual_product_form
                 )
-                metrics = build_metrics_dict(energy_man, fat_man, sugar_man,
+                metrics = build_metrics_dict(energy_man, fat_man, sat_fat_man, sugar_man,
                                              sodium_man, protein_man, fiber_man,
                                              manual_product_form)
                 render_pdf_download_button(
@@ -1470,13 +1478,14 @@ elif st.session_state.active_mode == "cooked":
 
             energy_val  = _safe_float(row.get(COOKED_ENERGY_COL,   0))
             fat_val     = _safe_float(row.get(COOKED_FAT_COL,      0))
+            sat_fat_val = _safe_float(row.get(COOKED_SAT_FAT_COL, 0))
             sugar_val   = _safe_float(row.get(COOKED_SUGAR_COL,    0))
             sodium_val  = _safe_float(row.get(COOKED_SODIUM_COL,   0))
             protein_val = _safe_float(row.get(COOKED_PROTEIN_COL,  0))
             fiber_val   = _safe_float(row.get(COOKED_FIBER_COL,    0))
 
             st.markdown(f"**{selected_dish}** Nutritional Breakdown:")
-            metrics = build_metrics_dict(energy_val, fat_val, sugar_val,
+            metrics = build_metrics_dict(energy_val, fat_val, sat_fat_val, sugar_val,
                                          sodium_val, protein_val, fiber_val,
                                          cooked_product_form)
             table_data = {
@@ -1487,7 +1496,7 @@ elif st.session_state.active_mode == "cooked":
 
             hfss = energy_val > 0 and (sodium_val / energy_val) > 1.0
             final_score, star = display_fssai_rating(
-                energy_val, fat_val, sugar_val, sodium_val, protein_val, fiber_val,
+                energy_val, sat_fat_val, sugar_val, sodium_val, protein_val, fiber_val,
                 product_category=cooked_product_form,
                 product_name=selected_dish
             )
