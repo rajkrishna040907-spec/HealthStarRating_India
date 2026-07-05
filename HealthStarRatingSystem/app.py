@@ -1018,7 +1018,8 @@ def build_metrics_dict(energy, fat, sat_fat, sugar, sodium, protein, fiber, form
     unit_e = "kcal" if form == "Solid Food" else "kcal/100ml"
     return {
         "⚡ Energy":         f"{energy} {unit_e}",
-        "🧈 Saturated Fat":  f"{fat} g",
+        "🧀 Total Fat":      f"{fat} g",
+        "🧈 Saturated Fat":  f"{sat_fat} g",
         "🍬 Total Sugars":   f"{sugar} g",
         "🧂 Sodium":         f"{sodium} mg",
         "🥩 Protein":        f"{protein} g",
