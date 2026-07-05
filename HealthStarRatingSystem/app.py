@@ -453,9 +453,9 @@ def display_fssai_rating(energy, sat_fat, sugar, sodium, protein, fiber,
             unsafe_allow_html=True
         )
 
-    label = "\U0001f964 FSSAI Liquid Beverage Rating" \
+    label = "\U0001f964 FSSAI Liquid Beverage Rating (Liquid Beverage Formula)" \
         if product_category == "Liquid Beverage" \
-        else "\U0001f4d0 Strict FSSAI Rule-Based Rating"
+        else "\U0001f4d0 Strict FSSAI Rule-Based Rating (Solid Food Formula)"
 
     render_star_display(predicted_star, label)
     return final_score, predicted_star
@@ -512,23 +512,23 @@ def display_ml_prediction(energy, sat_fat, sugar, sodium, protein, fiber,
 # MODULE 3 — SMART HEALTH SUBSTITUTION ENGINE
 # ─────────────────────────────────────────────────────────────
 
-PACKAGED_ENERGY_COL  = 'Calories_kcal'
-PACKAGED_FAT_COL     = 'Total_Fat_g'
-PACKAGED_SAT_FAT_COL = 'Saturated_Fat_g'
-PACKAGED_SUGAR_COL   = 'Sugar_g'
-PACKAGED_SODIUM_COL  = 'Sodium_mg'
-PACKAGED_PROTEIN_COL = 'Proteins_g'
-PACKAGED_FIBER_COL   = 'Dietary_Fiber_g'
-PACKAGED_NAME_COL    = 'Item name'
+PACKAGED_ENERGY_COL  = 'Energy'
+PACKAGED_FAT_COL     = 'Total_Fat'
+PACKAGED_SAT_FAT_COL = 'Saturated_Fat'
+PACKAGED_SUGAR_COL   = 'Total_Sugars'
+PACKAGED_SODIUM_COL  = 'Sodium'
+PACKAGED_PROTEIN_COL = 'Protein'
+PACKAGED_FIBER_COL   = 'Dietary_Fiber'
+PACKAGED_NAME_COL    = 'Product_Name'
 
-COOKED_ENERGY_COL    = 'Calories (kcal)'
-COOKED_FAT_COL       = 'Total_Fat (g)'
-COOKED_SAT_FAT_COL   = 'Saturated_Fat (g)'
-COOKED_SUGAR_COL     = 'Free Sugar (g)'
-COOKED_SODIUM_COL    = 'Sodium (mg)'
-COOKED_PROTEIN_COL   = 'Protein (g)'
-COOKED_FIBER_COL     = 'Fibre (g)'
-COOKED_NAME_COL      = 'Dish Name'
+COOKED_ENERGY_COL    = 'Energy'
+COOKED_FAT_COL       = 'Total_Fat'
+COOKED_SAT_FAT_COL   = 'Saturated_Fat'
+COOKED_SUGAR_COL     = 'Total_Sugars'
+COOKED_SODIUM_COL    = 'Sodium'
+COOKED_PROTEIN_COL   = 'Protein'
+COOKED_FIBER_COL     = 'Dietary_Fiber'
+COOKED_NAME_COL      = 'Product_Name'
 
 def _safe_float(val):
     try:
@@ -536,6 +536,25 @@ def _safe_float(val):
         return 0.0 if np.isnan(v) else v
     except Exception:
         return 0.0
+
+def get_smart_swaps(df, name_col):
+    """Randomly fetches 3 alternative items with >= 4.0 star rating."""
+    if df.empty or name_col not in df.columns:
+        return []
+    # If star_rating column doesn't exist, we can't easily filter without computing all.
+    # We will assume a 'star_rating' isn't pre-computed, so we compute it on the fly if needed,
+    # or just use a pre-computed column if it exists. 
+    # For Phase 2, we dynamically score them if not present.
+    high_raters = []
+    # Optimization: sample a random subset to check instead of the whole df to save time
+    shuffled = df.sample(frac=1).reset_index(drop=True)
+    for _, row in shuffled.iterrows():
+        star = get_cooked_star(row) if name_col == COOKED_NAME_COL else get_packaged_star(row)
+        if star >= 4.0:
+            high_raters.append(str(row.get(name_col, "")))
+        if len(high_raters) >= 3:
+            break
+    return high_raters
 
 def get_packaged_star(row):
     """Compute FSSAI solid-food star for a packaged row."""
@@ -676,7 +695,7 @@ def _pdf_safe(text: str) -> str:
     return text.encode('latin-1', errors='ignore').decode('latin-1')
 
 def export_to_pdf(product_name, form, metrics_dict, final_score, star_rating,
-                  hfss_warning=False):
+                  hfss_warning=False, smart_swaps=None):
     """
     Generates a structured FSSAI nutritional report PDF using fpdf2.
     Returns bytes of the PDF file, or None if fpdf2 is not installed.
@@ -795,6 +814,18 @@ def export_to_pdf(product_name, form, metrics_dict, final_score, star_rating,
         tier = "Very Poor - High Health Risk"
     pdf.cell(0, 8, _pdf_safe(tier), ln=True)
 
+    # ── Healthy Swaps ──
+    if smart_swaps:
+        pdf.ln(6)
+        pdf.set_fill_color(20, 90, 50)
+        pdf.set_text_color(200, 255, 200)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, "Healthy Alternatives Suggested (>= 4.0 Stars):", ln=True, fill=True)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(30, 30, 30)
+        for swap in smart_swaps:
+            pdf.cell(0, 6, _pdf_safe(f" • {swap}"), ln=True)
+            
     # ── Footer ──
     pdf.ln(10)
     pdf.set_font("Helvetica", "I", 9)
@@ -808,10 +839,10 @@ def export_to_pdf(product_name, form, metrics_dict, final_score, star_rating,
     return bytes(pdf.output())
 
 def render_pdf_download_button(product_name, form, metrics_dict,
-                                final_score, star_rating, hfss_warning=False):
+                                final_score, star_rating, hfss_warning=False, smart_swaps=None):
     """Renders the st.download_button for the PDF export."""
     pdf_bytes = export_to_pdf(
-        product_name, form, metrics_dict, final_score, star_rating, hfss_warning
+        product_name, form, metrics_dict, final_score, star_rating, hfss_warning, smart_swaps
     )
     if pdf_bytes is None:
         st.warning("📦 PDF export requires `fpdf2`. Install it with `pip install fpdf2`.")
@@ -1115,24 +1146,17 @@ elif st.session_state.active_mode == "packaged":
         st.markdown("Search the dataset to look up nutritional parameters.")
         df = load_dataset()
 
-        search_col1, search_col2, _ = st.columns([2, 2, 1], gap="small")
         selected_product = None
-        with search_col1:
-            if not df.empty and PACKAGED_NAME_COL in df.columns:
-                selected_product = st.selectbox(
-                    "Search registered commercial food items:",
-                    df[PACKAGED_NAME_COL].unique(),
-                    key="pkg_search_item"
-                )
-        with search_col2:
-            search_product_form = st.selectbox(
-                "Product Form:",
-                ["Solid Food", "Liquid Beverage"],
-                key="search_product_form_selection"
+        if not df.empty and PACKAGED_NAME_COL in df.columns:
+            selected_product = st.selectbox(
+                "Search registered commercial food items:",
+                df[PACKAGED_NAME_COL].unique(),
+                key="pkg_search_item"
             )
 
         if selected_product and not df.empty and PACKAGED_NAME_COL in df.columns:
             row = df[df[PACKAGED_NAME_COL] == selected_product].iloc[0]
+            search_product_form = str(row.get('product_form', 'Solid Food'))
             energy_val  = _safe_float(row.get(PACKAGED_ENERGY_COL,  0))
             fat_val     = _safe_float(row.get(PACKAGED_FAT_COL,     0))
             sat_fat_val = _safe_float(row.get(PACKAGED_SAT_FAT_COL, 0))
@@ -1165,7 +1189,7 @@ elif st.session_state.active_mode == "packaged":
             show_packaged_substitution_panel(star, selected_product, df)
 
         elif df.empty or PACKAGED_NAME_COL not in df.columns:
-            st.warning("Dataset not found or missing 'Item name' column.")
+            st.warning("Dataset not found or missing 'Product_Name' column.")
 
     # ── Sub-workspace: Upload NIP (Vision AI) ──
     elif st.session_state.packaged_sub_mode == "Upload NIP":
@@ -1331,7 +1355,11 @@ elif st.session_state.active_mode == "packaged":
                             value=float(parsed_data.get('Energy',  0.0)),
                             key="ocr_en",
                             help="Required for scoring" if parsed_data.get('Energy', 0.0) == 0.0 else None)
-                        fat_val     = st.number_input("Saturated Fat (g per 100g)",
+                        fat_val     = st.number_input("Total Fat (g per 100g)",
+                            min_value=0.0,
+                            value=float(parsed_data.get('Fat', 0.0)),
+                            key="ocr_fat_tot")
+                        sat_fat_val = st.number_input("Saturated Fat (g per 100g)",
                             min_value=0.0,
                             value=float(parsed_data.get('Sat_Fat', 0.0)),
                             key="ocr_fat")
@@ -1372,12 +1400,12 @@ elif st.session_state.active_mode == "packaged":
                                 product_category=product_category
                             )
                             metrics = build_metrics_dict(
-                                energy_val, fat_val, sugar_val,
+                                energy_val, fat_val, sat_fat_val, sugar_val,
                                 sodium_val, protein_val, fiber_val,
                                 product_category
                             )
                             _, star = calculate_fssai_rating(
-                                energy_val, fat_val, sugar_val,
+                                energy_val, sat_fat_val, sugar_val,
                                 sodium_val, protein_val, fiber_val,
                                 product_category
                             )
@@ -1450,70 +1478,167 @@ elif st.session_state.active_mode == "packaged":
 # PAGE: TRADITIONAL COOKED DISHES
 # ═══════════════════════════════════════════════════════════════
 
+
+
 elif st.session_state.active_mode == "cooked":
     st.button("⬅️ Back to Home", on_click=set_mode, args=("landing",))
-    st.markdown("#### 🔍 Search Traditional Dishes")
+    st.markdown("#### 🍽️ Build Your Platter")
     st.markdown(NEON_CSS, unsafe_allow_html=True)
 
     df_cooked  = load_cooked_dataset()
     dish_column = COOKED_NAME_COL if COOKED_NAME_COL in df_cooked.columns else 'recipe_name'
 
     if not df_cooked.empty and dish_column in df_cooked.columns:
-        col_dish, col_form = st.columns(2)
-        with col_dish:
+        cooked_mode = st.radio("Choose Mode:", ["🔍 Search Individual Dish", "🍽️ Build Your Platter"], horizontal=True)
+        st.markdown("---")
+        
+        if cooked_mode == "🔍 Search Individual Dish":
             selected_dish = st.selectbox(
-                "Search registered traditional Indian dishes:",
+                "Search for a traditional Indian dish:",
+                df_cooked[dish_column].unique(),
+                key="cooked_single_search"
+            )
+            
+            if selected_dish:
+                row = df_cooked[df_cooked[dish_column] == selected_dish].iloc[0]
+                form_val = str(row.get('product_form', 'Solid Food')).strip().title()
+                cooked_product_form = "Liquid Beverage" if "Liquid" in form_val else "Solid Food"
+                
+                energy_val  = _safe_float(row.get(COOKED_ENERGY_COL,   0))
+                fat_val     = _safe_float(row.get(COOKED_FAT_COL,      0))
+                sat_fat_val = _safe_float(row.get(COOKED_SAT_FAT_COL, 0))
+                sugar_val   = _safe_float(row.get(COOKED_SUGAR_COL,    0))
+                sodium_val  = _safe_float(row.get(COOKED_SODIUM_COL,   0))
+                protein_val = _safe_float(row.get(COOKED_PROTEIN_COL,  0))
+                fiber_val   = _safe_float(row.get(COOKED_FIBER_COL,    0))
+
+                st.markdown(f"### {selected_dish} Nutritional Profile (per 100g)")
+                metrics = build_metrics_dict(energy_val, fat_val, sat_fat_val, sugar_val,
+                                             sodium_val, protein_val, fiber_val,
+                                             cooked_product_form)
+                table_data = {
+                    "Nutrient Component": list(metrics.keys()),
+                    "Value per 100g":  list(metrics.values()),
+                }
+                st.table(pd.DataFrame(table_data))
+
+                hfss = energy_val > 0 and (sodium_val / energy_val) > 1.0
+                final_score, star = display_fssai_rating(
+                    energy_val, sat_fat_val, sugar_val, sodium_val,
+                    protein_val, fiber_val, product_category=cooked_product_form
+                )
+                
+                # Smart Swaps logic
+                smart_swaps = None
+                if star <= 3.5:
+                    st.markdown(
+                        '<div style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);'
+                        'border:1px solid #00FFCC55;border-radius:14px;padding:18px 22px;margin-bottom:16px;">'
+                        '<h3 style="color:#00FFCC;margin:0 0 6px 0;">💡 Healthy Swaps & Suggestions</h3>'
+                        '<p style="color:#b0b8c1;margin:0;font-size:0.93rem;">'
+                        'This dish scores 3.5 stars or below. Consider swapping to these highly rated (>= 4.0★) alternatives:</p></div>',
+                        unsafe_allow_html=True
+                    )
+                    smart_swaps = get_smart_swaps(df_cooked, dish_column)
+                    for swap in smart_swaps:
+                        st.markdown(f"**🟢 {swap}** (Excellent Choice!)")
+
+                render_pdf_download_button(
+                    selected_dish, cooked_product_form, metrics,
+                    final_score, star, hfss_warning=hfss, smart_swaps=smart_swaps
+                )
+                
+        elif cooked_mode == "🍽️ Build Your Platter":
+            selected_dishes = st.multiselect(
+                "Select multiple traditional Indian dishes to build your platter:",
                 df_cooked[dish_column].unique(),
                 key="cooked_dish_selector"
             )
-        with col_form:
-            cooked_product_form = st.selectbox(
-                "Product Form:",
-                ["Solid Food", "Liquid Beverage"],
-                key="cooked_product_form_selection"
-            )
-
-        if selected_dish:
-            row = df_cooked[df_cooked[dish_column] == selected_dish].iloc[0]
-
-            energy_val  = _safe_float(row.get(COOKED_ENERGY_COL,   0))
-            fat_val     = _safe_float(row.get(COOKED_FAT_COL,      0))
-            sat_fat_val = _safe_float(row.get(COOKED_SAT_FAT_COL, 0))
-            sugar_val   = _safe_float(row.get(COOKED_SUGAR_COL,    0))
-            sodium_val  = _safe_float(row.get(COOKED_SODIUM_COL,   0))
-            protein_val = _safe_float(row.get(COOKED_PROTEIN_COL,  0))
-            fiber_val   = _safe_float(row.get(COOKED_FIBER_COL,    0))
-
-            st.markdown(f"**{selected_dish}** Nutritional Breakdown:")
-            metrics = build_metrics_dict(energy_val, fat_val, sat_fat_val, sugar_val,
-                                         sodium_val, protein_val, fiber_val,
-                                         cooked_product_form)
-            table_data = {
-                "Nutrient Component": list(metrics.keys()),
-                "Value per 100g/ml":  list(metrics.values()),
-            }
-            st.table(pd.DataFrame(table_data))
-
-            hfss = energy_val > 0 and (sodium_val / energy_val) > 1.0
-            final_score, star = display_fssai_rating(
-                energy_val, sat_fat_val, sugar_val, sodium_val, protein_val, fiber_val,
-                product_category=cooked_product_form,
-                product_name=selected_dish
-            )
-
-            # Papad serving-size context note
-            if "papad" in selected_dish.lower():
-                st.info(
-                    "\U0001f4a1 **Serving Size Note:** Papad is evaluated per 100g raw weight "
-                    "according to standard FSSAI protocols. While it scales with high sodium "
-                    "density, a typical single-piece serving is only ~3g to 5g in practice."
-                )
-
-            render_pdf_download_button(
-                selected_dish, cooked_product_form, metrics,
-                final_score, star, hfss_warning=hfss
-            )
-            show_cooked_substitution_panel(star, selected_dish, df_cooked)
-
+            
+            if selected_dishes:
+                st.markdown("##### Adjust Serving Weights (g)")
+                weights = {}
+                for dish in selected_dishes:
+                    w = st.slider(f"{dish}", min_value=0, max_value=500, value=100, step=10, key=f"w_{dish}")
+                    weights[dish] = w
+                
+                total_weight = sum(weights.values())
+                
+                if total_weight > 0:
+                    agg_energy, agg_fat, agg_sat_fat = 0.0, 0.0, 0.0
+                    agg_sugar, agg_sodium, agg_protein, agg_fiber = 0.0, 0.0, 0.0, 0.0
+                    liquid_weight, solid_weight = 0.0, 0.0
+                    
+                    for dish in selected_dishes:
+                        row = df_cooked[df_cooked[dish_column] == dish].iloc[0]
+                        w = weights[dish]
+                        w_ratio = w / total_weight
+                        
+                        form_val = str(row.get('product_form', 'Solid Food')).strip().title()
+                        if "Liquid" in form_val:
+                            liquid_weight += w
+                        else:
+                            solid_weight += w
+                        
+                        agg_energy  += _safe_float(row.get(COOKED_ENERGY_COL,   0)) * w_ratio
+                        agg_fat     += _safe_float(row.get(COOKED_FAT_COL,      0)) * w_ratio
+                        agg_sat_fat += _safe_float(row.get(COOKED_SAT_FAT_COL, 0)) * w_ratio
+                        agg_sugar   += _safe_float(row.get(COOKED_SUGAR_COL,    0)) * w_ratio
+                        agg_sodium  += _safe_float(row.get(COOKED_SODIUM_COL,   0)) * w_ratio
+                        agg_protein += _safe_float(row.get(COOKED_PROTEIN_COL,  0)) * w_ratio
+                        agg_fiber   += _safe_float(row.get(COOKED_FIBER_COL,    0)) * w_ratio
+    
+                    cooked_product_form = "Liquid Beverage" if liquid_weight > solid_weight else "Solid Food"
+    
+                    agg_energy = round(agg_energy, 2)
+                    agg_fat = round(agg_fat, 2)
+                    agg_sat_fat = round(agg_sat_fat, 2)
+                    agg_sugar = round(agg_sugar, 2)
+                    agg_sodium = round(agg_sodium, 2)
+                    agg_protein = round(agg_protein, 2)
+                    agg_fiber = round(agg_fiber, 2)
+    
+                    st.markdown("---")
+                    st.markdown("### Platter Nutritional Aggregation (per 100g average)")
+                    metrics = build_metrics_dict(agg_energy, agg_fat, agg_sat_fat, agg_sugar,
+                                                 agg_sodium, agg_protein, agg_fiber,
+                                                 cooked_product_form)
+                    table_data = {
+                        "Nutrient Component": list(metrics.keys()),
+                        "Value per 100g":  list(metrics.values()),
+                    }
+                    st.table(pd.DataFrame(table_data))
+    
+                    hfss = agg_energy > 0 and (agg_sodium / agg_energy) > 1.0
+                    platter_name = " + ".join(selected_dishes)
+                    if len(platter_name) > 40: platter_name = platter_name[:37] + "..."
+                    
+                    final_score, star = display_fssai_rating(
+                        agg_energy, agg_sat_fat, agg_sugar, agg_sodium, agg_protein, agg_fiber,
+                        product_category=cooked_product_form,
+                        product_name="Custom Platter"
+                    )
+    
+                    # Smart Swaps logic
+                    smart_swaps = None
+                    if star <= 3.5:
+                        st.markdown(
+                            '<div style="background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);'
+                            'border:1px solid #00FFCC55;border-radius:14px;padding:18px 22px;margin-bottom:16px;">'
+                            '<h3 style="color:#00FFCC;margin:0 0 6px 0;">💡 Healthy Swaps & Suggestions</h3>'
+                            '<p style="color:#b0b8c1;margin:0;font-size:0.93rem;">'
+                            'Your platter scores 3.5 stars or below. Consider swapping or adding these highly rated (>= 4.0★) dishes:</p></div>',
+                            unsafe_allow_html=True
+                        )
+                        smart_swaps = get_smart_swaps(df_cooked, dish_column)
+                        for swap in smart_swaps:
+                            st.markdown(f"**🟢 {swap}** (Excellent Choice!)")
+    
+                    render_pdf_download_button(
+                        platter_name, cooked_product_form, metrics,
+                        final_score, star, hfss_warning=hfss, smart_swaps=smart_swaps
+                    )
+                else:
+                    st.warning("Please allocate at least some weight to your platter to calculate ratings.")
     else:
         st.warning("Dataset not found or missing dish name column.")
