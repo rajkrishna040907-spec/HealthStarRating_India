@@ -1033,6 +1033,8 @@ def build_metrics_dict(energy, fat, sat_fat, sugar, sodium, protein, fiber, form
 
 if 'active_mode' not in st.session_state:
     st.session_state.active_mode = "landing"
+if 'app_started' not in st.session_state:
+    st.session_state.app_started = False
 
 def set_mode(mode):
     st.session_state.active_mode = mode
@@ -1062,50 +1064,79 @@ if st.session_state.active_mode == "landing":
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="main-title">🌟 FSSAI Indian Health Star Rating System</div>',
-                unsafe_allow_html=True)
+    if not st.session_state.app_started:
+        st.markdown('<div class="main-title">🌟 FSSAI Indian Health Star Rating System</div>',
+                    unsafe_allow_html=True)
+                    
+        st.markdown("""
+### 🥗 About the Application
+Welcome to the **Indian Health Star Rating AI**—a data-driven evaluation engine strictly implementing the **Food Safety and Standards Authority of India (FSSAI)** guidelines. This tool allows consumers, developers, and nutritionists to calculate an objective Health Star Rating (from 0.5 to 5.0 Stars) based on standardized Indian nutritional profiling matrices.
 
-    _, card_left, card_right, _ = st.columns([1, 4, 4, 1])
+**What you can do here:**
+*   **📦 Evaluate Packaged Foods:** Upload a label image or type nutritional values manually to parse data through explicit solid/liquid FSSAI penalty matrices.
+*   **🍽️ Build Custom Platters & Search Cooked Dishes:** Look up traditional recipes or create a multi-item platter with dynamic weight sliders to view aggregate meal health star metrics.
+*   **🔄 Discover Healthy Swaps:** Automatically receive highly-rated alternatives (4.0+ Stars) if a food selection scores lower thresholds.
+        """)
+        
 
-    # ── Left card: Packaged Foods ──
-    with card_left:
-        packaged_emojis = [
-            ("🥤", (24, 12), (24, 42)),
-            ("🍿", (30, 14), (30, 44)),
-            ("🍪", (30, 18), (30, 48)),
-            ("🍫", (24, 12), (24, 42)),
-            ("🧃", (36, 14), (36, 44)),
-        ]
-        html_left = _build_eye_tracker_html(packaged_emojis, height=160)
-        st.components.v1.html(html_left, height=160)
-        st.subheader("📦 1. Packaged Foods Classifier")
-        st.markdown(
-            '<div style="height:80px;">Scan a Nutrition Information Panel (NIP) using '
-            'Vision AI to automatically extract and score commercial food products.</div>',
-            unsafe_allow_html=True
-        )
-        st.button("Proceed to Packaged Foods", on_click=set_mode,
-                  args=("packaged",), use_container_width=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🚀 Start Application", use_container_width=True):
+            st.session_state.app_started = True
+            st.rerun()
+            
+    else:
+        st.markdown('<div class="main-title">🌟 FSSAI Indian Health Star Rating System</div>',
+                    unsafe_allow_html=True)
+        
+        _, card_left, card_right, _ = st.columns([1, 4, 4, 1])
 
-    # ── Right card: Cooked Dishes ──
-    with card_right:
-        cooked_emojis = [
-            ("🍲", (30, 10), (30, 40)),
-            ("☕", (30, 18), (30, 48)),
-            ("🍚", (30, 18), (30, 48)),
-            ("🥟", (24, 18), (24, 48)),
-            ("🍢", (24, 18), (24, 42)),
-        ]
-        html_right = _build_eye_tracker_html(cooked_emojis, height=160)
-        st.components.v1.html(html_right, height=160)
-        st.subheader("🍲 2. Traditional Cooked Dishes")
-        st.markdown(
-            '<div style="height:80px;">Search and evaluate traditional Indian recipes '
-            'against strict FSSAI nutritional rating guidelines.</div>',
-            unsafe_allow_html=True
-        )
-        st.button("Proceed to Cooked Dishes", on_click=set_mode,
-                  args=("cooked",), use_container_width=True)
+        # ── Left card: Packaged Foods ──
+        with card_left:
+            packaged_emojis = [
+                ("🥤", (24, 12), (24, 42)),
+                ("🍿", (30, 14), (30, 44)),
+                ("🍪", (30, 18), (30, 48)),
+                ("🍫", (24, 12), (24, 42)),
+                ("🧃", (36, 14), (36, 44)),
+            ]
+            html_left = _build_eye_tracker_html(packaged_emojis, height=160)
+            st.components.v1.html(html_left, height=160)
+            st.subheader("📦 1. Packaged Foods Classifier")
+            st.markdown(
+                '<div style="height:80px;">Scan a Nutrition Information Panel (NIP) using '
+                'Vision AI to automatically extract and score commercial food products.</div>',
+                unsafe_allow_html=True
+            )
+            st.button("Proceed to Packaged Foods", on_click=set_mode,
+                      args=("packaged",), use_container_width=True)
+
+        # ── Right card: Cooked Dishes ──
+        with card_right:
+            cooked_emojis = [
+                ("🍲", (30, 10), (30, 40)),
+                ("☕", (30, 18), (30, 48)),
+                ("🍚", (30, 18), (30, 48)),
+                ("🥟", (24, 18), (24, 48)),
+                ("🍢", (24, 18), (24, 42)),
+            ]
+            html_right = _build_eye_tracker_html(cooked_emojis, height=160)
+            st.components.v1.html(html_right, height=160)
+            st.subheader("🍲 2. Traditional Cooked Dishes")
+            st.markdown(
+                '<div style="height:80px;">Search and evaluate traditional Indian recipes '
+                'against strict FSSAI nutritional rating guidelines.</div>',
+                unsafe_allow_html=True
+            )
+            st.button("Proceed to Cooked Dishes", on_click=set_mode,
+                      args=("cooked",), use_container_width=True)
+                      
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button("↩️ Back to Introduction", use_container_width=True):
+                st.session_state.app_started = False
+                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
